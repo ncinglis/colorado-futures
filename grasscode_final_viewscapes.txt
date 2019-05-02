@@ -1,0 +1,110 @@
+FUTURES PARAMETERIZATION AND VALIDATION 1992 - 2006 with viewscapes.
+
+##Didn't do LOG2 demand curve, might be better
+##Go beyond 2050 when you're ready 
+
+
+
+#Import viewscape raster 
+Set region
+
+g.region raster=landuse_2011 -p 
+
+
+v.to.rast input=protected_areas output=protected_areas use=val
+r.null map=protected_areas null=0
+
+r.mapcalc "urban_1992 = if(landuse_1992 >= 21 && landuse_1992 <= 24, 1, if(landuse_1992 == 11 || landuse_1992 >= 90 || protected_areas, null(), 0))"
+r.mapcalc "urban_2001 = if(landuse_2001 >= 21 && landuse_2001 <= 24, 1, if(landuse_2001 == 11 || landuse_2001 >= 90 || protected_areas, null(), 0))"
+r.mapcalc "urban_2006 = if(landuse_2006 >= 21 && landuse_2006 <= 24, 1, if(landuse_2006 == 11 || landuse_2006 >= 90 || protected_areas, null(), 0))"
+
+v.to.rast input=boulderlarimer type=area use=attr attribute_column=NUM_FIPS output=counties
+
+
+Potential - predictors
+r.slope.aspect elevation=elevation_10m slope=slope
+r.null map=protected_areas setnull=0
+r.grow.distance input=protected_areas distance=dist_to_protected
+r.colors map=dist_to_protected color=gyr
+
+v.to.rast input=roads type=line where="MTFCC = 'S1630'" output=interchanges use=val
+r.grow.distance -m input=interchanges distance=dist_interchanges
+
+r.mapcalc "forest_2006 = if(landuse_2006 >= 41 && landuse_2006 <= 43, 1, 0)"
+r.mapcalc "forest_1992 = if(landuse_1992 >= 41 && landuse_1992 <= 43, 1, 0)"
+r.neighbors -c input=forest output=forest_2006_smooth size=15 method=average
+r.neighbors -c input=forest_1992 output=forest_1992_smooth size=15 method=average
+r.colors map=forest_2006_smooth,forest_1992_smooth color=ndvi
+
+v.to.rast input=roads output=roads use=val type=line
+r.null map=roads null=0
+r.neighbors -c input=roads output=road_dens size=25 method=average
+
+r.mapcalc "water = if(landuse_2006==11, 1, 0)" --overwrite
+r.grow.distance -m input=water distance=dist_water --overwrite
+
+g.copy vector=roads
+
+r.futures.devpressure -n input=urban_1992 output=devpressure_0_5_92 method=gravity size=30 gamma=0.5 scaling_factor=0.1
+r.futures.devpressure -n input=urban_2006 output=devpressure_0_5_06 method=gravity size=30 gamma=0.5 scaling_factor=0.1
+
+Python code for variable scale examination
+
+for name in ['slope', 'dist_water', 'dist_to_protected',
+             'forest_smooth', 'forest_2001_smooth',
+             'road_dens', 'dist_interchanges', 'devpressure_0_5_92', 'devpressure_0_5_06', 'view_size']:
+    minmax = grass.raster_info(name)
+    print name, minmax['min'], minmax['max']
+	
+
+
+	
+r.mapcalc "dist_water_mi = dist_water * 0.00018939394"
+r.mapcalc "dist_to_protected_mi = dist_to_protected * 0.00018939394"
+r.mapcalc "dist_interchanges_mi = dist_interchanges * 0.00018939394"
+r.mapcalc "road_dens_perc = road_dens * 100"
+r.mapcalc "forest_smooth_perc_06 = forest_2006_smooth * 100"
+r.mapcalc "forest_1992_smooth_perc = forest_1992_smooth * 100"
+r.mapcalc "urban_change_92_06 = if(urban_2006 == 1, if(urban_1992 == 0, 1, null()), 0)"
+
+
+
+r.mapcalc "urban_change_clip = if(counties, urban_change_92_11)" --o
+
+r.report map=urban_change_clip units=h,c,p 
+
+r.sample.category input=urban_change_clip output=sampling4 sampled=counties,devpressure_0_5_92,slope,road_dens_perc,forest_1992_smooth_perc,dist_water_mi,dist_to_protected_mi,dist_interchanges_mi,view_size npoints=5000,1000
+
+v.db.select map=sampling4 columns=counties,devpressure_0_5_92,slope,road_dens_perc,forest_1992_smooth_perc,dist_water_mi,dist_to_protected_mi,dist_interchanges_mi,view_size separator=comma file=C:/ncstate/FUTURES/colorado/data/samples4.csv
+
+r.futures.potential -d input=sampling4 output=C:/ncstate/FUTURES/colorado/data/potential4.csv columns=devpressure_0_5_92,slope,road_dens_perc,forest_1992_smooth_perc,dist_water_mi,dist_to_protected_mi,dist_interchanges_mi,view_size developed_column=urban_change_clip subregions_column=counties min_variables=4
+
+r.futures.potsurface input=C:/ncstate/FUTURES/colorado/data/potential4.csv subregions=counties output=suitability4
+r.colors map=suitability4 color=byr
+
+Demand! Yay 
+
+v.to.rast input=roads type=line output=roads_mask use=val
+r.mask roads_mask -i
+
+#Make a csv with 
+r.futures.demand development=urban_1992,urban_2001,urban_2006,urban_2011 subregions=counties observed_population=C:/ncstate/FUTURES/colorado/data/population_trend.csv projected_population=C:/ncstate/FUTURES/colorado/data/population_projection.csv simulation_times=2017,2018,2019,2020,2021,2022,2023,2024,2025,2026,2027,2028,2029,2030,2031,2032,2033,2034,2035,2036,2037,2038,2039,2040,2041,2042,2043,2044,2045,2046,2047,2048,2049,2050 plot=C:/ncstate/FUTURES/colorado/data/plot_demand4.pdf demand=C:/ncstate/FUTURES/colorado/data/demand4.csv separator=comma
+
+r.mask -r
+
+REAL CALIB
+g.region raster=landuse_2011 -p
+r.futures.calib development_start=urban_1992 development_end=urban_2011 subregions=counties patch_sizes=C:/ncstate/FUTURES/colorado/data/patches4.txt calibration_results=C:/ncstate/FUTURES/colorado/data/calib4.csv patch_threshold=1800 repeat=10 compactness_mean=0.1,0.3,0.5,0.7,0.9 compactness_range=0.05 discount_factor=0.1,0.3,0.5,0.7,0.9 predictors=dist_interchanges_mi,dist_to_protected_mi,forest_1992_smooth_perc,road_dens_perc,slope,view_size demand=C:/ncstate/FUTURES/colorado/data/demand3.csv devpot_params=C:/ncstate/FUTURES/colorado/data/potential4.csv num_neighbors=4 seed_search=2 development_pressure=devpressure_0_5 development_pressure_approach=gravity n_dev_neighbourhood=30 gamma=0.5 scaling_factor=0.1 --overwrite
+
+
+##Check calibration results and put the right answers in here
+r.futures.pga subregions=counties developed=urban_2011 predictors=dist_interchanges_mi,dist_to_protected_mi,forest_1992_smooth_perc,road_dens_perc,slope,view_size devpot_params=C:/ncstate/FUTURES/colorado/data/potential4.csv development_pressure=devpressure_0_5 n_dev_neighbourhood=30 development_pressure_approach=gravity gamma=0.5 scaling_factor=0.1 demand=C:/ncstate/FUTURES/colorado/data/demand4.csv discount_factor=0.1 compactness_mean=0.1 compactness_range=0.05 patch_sizes=C:/ncstate/FUTURES/colorado/data/patches4.txt num_neighbors=4 seed_search=2 random_seed=1 output=final output_series=step4
+
+
+
+
+
+Animate 
+t.create output=futures_series4 type=strds temporaltype=relative semantictype=mean title="Development" description="Development time series 2017 to 2050 generated by FUTURES" --overwrite
+t.register input=futures_series4 file=C:/ncstate/FUTURES/colorado/code/futures_series4.txt start=2017 unit=years increment=1 --overwrite
+

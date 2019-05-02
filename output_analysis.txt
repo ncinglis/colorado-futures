@@ -1,0 +1,44 @@
+#Make ref
+r.mapcalc "ref_2011 = if(urban_2011 == 1, 100, 200)" --o
+
+
+#Make sim 
+r.mapcalc "simadd_2011 = valid_run1_01 + valid_run1_02 + valid_run1_03 + valid_run1_04 + valid_run1_05 + valid_run1_06" --o
+
+r.null map=simadd_2011 null=0
+r.mapcalc "sim_2011 = if(simadd_2011 >= 1, 1, 2)" --o
+
+
+#Add
+
+r.mapcalc "matrix1 = ref_2011 + sim_2011"
+
+#Matrix
+
+
+C:/Python27_old/ArcGIS10.6/python.exe C:\ncstate\FUTURES\colorado\validation\pontius_allocation_quantity_disaggrement.py
+
+
+
+##Buffer 
+v.buffer input=protected_areas distance=3280.84 output=WUI
+v.overlay ainput=WUI binput=protected_areas operator=not output=justWUI
+
+r.mapcalc expression="urban_2011_WUI = if(urban_2011 > 0, 1, 0)"
+r.mapcalc "final_WUI = if(final > -1, 1,0)"
+
+r.mask vector=justWUI
+r.stats urban_2011_WUI -c
+r.stats final_WUI -c
+
+
+2011 developed WUI cells = 113868/666167 = 17.1%
+2050 developed WUI cells = 136636/662630 = 20.6%
+Percent change in cells = +20%
+
+
+2011 Developed overall  = 688335/4819626 = 14.2%
+2050 developed overall = 973354/4653575  =  20.1%
+
+
+Percent change in cells - +41%
