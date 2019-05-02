@@ -1,5 +1,6 @@
 # continuous-viewscape-modeling
-Anna Petrasova  
+Author: Anna Petrasova  
+
 Scripts for modeling spatially continuous viewscapes.
 
 Basic workflow assuming data is prepared in GRASS location and computational region is set:
